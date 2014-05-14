@@ -1,0 +1,114 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:camel="http://camel.apache.org/schema/spring"
+       xmlns:osgi="http://www.springframework.org/schema/osgi"
+       xsi:schemaLocation="
+        http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd
+        http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/osgi http://www.springframework.org/schema/osgi/spring-osgi.xsd">
+
+    <!-- bridge spring property placeholder with Camel -->
+    <!-- you must NOT use the <context:property-placeholder at the same time,
+        only this bridge bean -->
+    <bean id="bridgePropertyPlaceholder"
+          class="org.apache.camel.spring.spi.BridgePropertyPlaceholderConfigurer">
+        <property name="location" value="file:${karaf.home}/etc/com.redhat.gps.aqtoamq.jms.cfg"/>
+    </bean>
+
+    <bean id="requiredJta" class="org.apache.camel.spring.spi.SpringTransactionPolicy">
+        <property name="transactionManager" ref="platformTxManager"/>
+        <property name="propagationBehaviorName" value="PROPAGATION_REQUIRED"/>
+    </bean>
+
+    <osgi:reference id="platformTxManager" interface="org.springframework.transaction.PlatformTransactionManager"/>
+    <osgi:reference id="transactionManager" interface="javax.transaction.TransactionManager"/>
+    <!-- needed by the ResourceManager in order to provide XA recovery -->
+    <osgi:reference id="recoverableTxManager"
+                    interface="org.apache.geronimo.transaction.manager.RecoverableTransactionManager"/>
+
+    <!---************************************* Oracle AQ **************************************************-->
+    <bean id="aqjms-xa-connection-factory" class="oracle.jms.AQjmsFactory" factory-method="getXAConnectionFactory">
+        <constructor-arg value="${oracle.aq.jdbc.url}"/>
+        <constructor-arg>
+            <props>
+                <prop key="user">${oracle.aq.db.username}</prop>
+                <prop key="password">${oracle.aq.db.password}</prop>
+            </props>
+        </constructor-arg>
+    </bean>
+    <!--*****Note the activemq.jms.pool package below, if you use activemq.pool, you will get an ActiveMQ
+    specific connection, which is not what we want****-->
+    <bean id="oracleaqjmspooled" class="org.apache.activemq.jms.pool.JcaPooledConnectionFactory" init-method="start"
+          destroy-method="stop">
+        <property name="idleTimeout" value="0"/>
+        <property name="name" value="aq.default"/>
+        <property name="maxConnections" value="1"/>
+        <property name="connectionFactory" ref="aqjms-xa-connection-factory"/>
+        <property name="transactionManager" ref="transactionManager"/>
+    </bean>
+    <bean id="resourceManager-AQ" class="org.apache.activemq.jms.pool.GenericResourceManager"
+          init-method="recoverResource">
+        <property name="connectionFactory" ref="aqjms-xa-connection-factory"/>
+        <property name="transactionManager" ref="recoverableTxManager"/>
+        <property name="resourceName" value="aq.default"/>
+        <property name="userName" value="${oracle.aq.db.username}"/>
+        <property name="password" value="${oracle.aq.db.password}"/>
+    </bean>
+    <bean id="oracleaqJmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+        <property name="connectionFactory" ref="aqjms-xa-connection-factory"/>
+        <property name="transactionManager" ref="platformTxManager"/>
+        <property name="transacted" value="false"/>
+    </bean>
+    <bean id="oracle.jmscomponent.name.id" name="oracleJmsComponent"
+          class="org.apache.camel.component.jms.JmsComponent">
+        <property name="configuration" ref="oracleaqJmsConfig"/>
+    </bean>
+    <!--*************************************************************************************************-->
+
+    <!--*************************************** ActiveMQ ************************************************-->
+    <bean id="activemq-jms-xa-connection-factory" class="org.apache.activemq.ActiveMQXAConnectionFactory">
+        <property name="brokerURL" value="${amq.broker.url}"/>
+        <property name="userName" value="${amq.broker.username}"/>
+        <property name="password" value="${amq.broker.password}"/>
+    </bean>
+    <bean id="activemqpooled" class="org.apache.activemq.pool.JcaPooledConnectionFactory" init-method="start"
+          destroy-method="stop">
+        <property name="idleTimeout" value="0"/>
+        <property name="name" value="activemq.default"/>
+        <property name="maxConnections" value="1"/>
+        <property name="connectionFactory" ref="activemq-jms-xa-connection-factory"/>
+        <property name="transactionManager" ref="transactionManager"/>
+    </bean>
+    <bean id="activemqJmsConfig" class="org.apache.camel.component.jms.JmsConfiguration">
+        <property name="connectionFactory" ref="activemqpooled"/>
+        <property name="transactionManager" ref="platformTxManager"/>
+        <property name="transacted" value="false"/>
+    </bean>
+    <bean id="activemq.jmscomponent.name.id" name="activeMQJmsComponent"
+          class="org.apache.camel.component.jms.JmsComponent">
+        <property name="configuration" ref="activemqJmsConfig"/>
+    </bean>
+    <!-- A ResourceManager is needed for every transactional resource in order to
+       recover any outstanding transactions after a crash.
+       It will register with the Aries transaction manager, which then calls
+       recoverResource() on the transactional resource itself.
+  -->
+    <bean id="resourceManager-AMQ" class="org.apache.activemq.pool.ActiveMQResourceManager"
+          init-method="recoverResource">
+        <property name="transactionManager" ref="recoverableTxManager"/>
+        <!-- CF must be of type ActiveMQConnectionFactory, otherwise no recovery will occur -->
+        <property name="connectionFactory" ref="activemq-jms-xa-connection-factory"/>
+        <property name="userName" value="${amq.broker.username}"/>
+        <property name="password" value="${amq.broker.password}"/>
+        <property name="resourceName" value="activemq.default"/>
+    </bean>
+
+    <!--*************************************************************************************************-->
+
+    <bean id="oracleaqtoactivemqJmsRoute"
+          class="com.redhat.gps.oracleaqtoactivemq.OracleAQToActiveMQMessageBridgeBuilder"/>
+    <camel:camelContext id="oracleaqToActiveMQ">
+        <camel:routeBuilder ref="oracleaqtoactivemqJmsRoute"/>
+    </camel:camelContext>
+
+</beans>
