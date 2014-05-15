@@ -12,7 +12,7 @@ This code is not supported by my employer - Red Hat. I have made this available 
 ### Installation and Testing -
 
  * Use `mvn clean install` to create the bundle for deployment
- * Copy the sample config file from `src/test/resources/etc/com.redhat.gps.aqtoamq.jms.cfg` to the `<JBoss Fuse Install Dir>/etc` folder.
+ * Edit the sample config file in `src/test/resources/etc/com.redhat.gps.aqtoamq.jms.cfg` and copy it to the `<JBoss Fuse Install Dir>/etc` folder.
  * Start up JBoss Fuse and install wrapped bundles for `ojdbc6` and `aqapi`
  * Install current bundle using `install -s mvn:com.redhat.gps/aq-to-amq/1.5-SNAPSHOT`
  * Run the `PumpMessagesIntoOracleAQTest.java` class to push messages into OracleAQ, which should show up in ActiveMQ, and the logs should show the transaction start, enlist and commit phases.
