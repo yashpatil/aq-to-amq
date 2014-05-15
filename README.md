@@ -1,6 +1,8 @@
 ## OracleAQ to ActiveMQ XA transactional route with Apache Camel
  This project demonstrates a Camel route that does an XA transaction across OracleAQ and ActiveMQ. It can be deployed to Red Hat JBoss Fuse for demonstration purposes.
 
+##### Please note that this code is not supported by my employer - Red Hat. I have made this available online to save someone hours of time trying to figure out a way to accomplish this using R&D (Re-run and Debug :)).
+
  The pre-requisites for this project are wrapped bundles for:
 
 * ojdbc6 (Oracle JDBC Driver)
